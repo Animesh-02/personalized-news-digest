@@ -1,0 +1,6 @@
+{
+  "name": "Personalized News Digest",
+  "description": "A tailored morning news digest app that aggregates custom RSS feeds and uses Gemini to synthesize personalized daily summaries aligned with user-specified interests.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
