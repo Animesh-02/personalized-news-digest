@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Google AI Studio configurations
+metadata.json
+assets/.aistudio/
