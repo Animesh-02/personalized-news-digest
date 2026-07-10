@@ -184,55 +184,65 @@ app.get("/api/default-feeds", (req, res) => {
 
 // 2. POST /api/fetch-rss - Scrapes feed content on server-side to prevent CORS issues
 app.post("/api/fetch-rss", async (req, res) => {
-  const { feeds } = req.body;
-  if (!feeds || !Array.isArray(feeds)) {
-    return res.status(400).json({ error: "Missing feeds array" });
-  }
-
-  const results: any[] = [];
-  
-  // Fetch multiple feeds concurrently with timeout protection
-  const fetchPromises = feeds.map(async (feed: any) => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 seconds timeout
-
-      const response = await fetch(feed.url, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PersonalizedNewsDigest/1.0",
-          Accept: "application/rss+xml, application/rdf+xml, application/atom+xml, application/xml, text/xml",
-        },
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}`);
-      }
-
-      const xmlText = await response.text();
-      const parsedItems = parseRSS(xmlText, feed.id, feed.name);
-      
-      // Limit to max 15 newest items per feed to avoid overwhelming the model or exceeding token limits
-      results.push(...parsedItems.slice(0, 15));
-    } catch (err: any) {
-      console.error(`Failed to fetch/parse feed ${feed.name} (${feed.url}):`, err.message);
-      // We don't fail the whole request, just log and skip this feed or return a partial success
+  try {
+    const { feeds } = req.body;
+    if (!feeds || !Array.isArray(feeds)) {
+      return res.status(400).json({ error: "Missing feeds array" });
     }
-  });
 
-  await Promise.all(fetchPromises);
+    const results: any[] = [];
+    
+    // Fetch multiple feeds concurrently with timeout protection
+    const fetchPromises = feeds.map(async (feed: any) => {
+      try {
+        if (!feed || typeof feed !== "object" || !feed.url) {
+          console.warn("Invalid feed skipped in fetch-rss:", feed);
+          return;
+        }
 
-  // Sort results by date descending (approximate parsing)
-  results.sort((a, b) => {
-    const timeA = new Date(a.pubDate).getTime();
-    const timeB = new Date(b.pubDate).getTime();
-    if (isNaN(timeA) || isNaN(timeB)) return 0;
-    return timeB - timeA;
-  });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 seconds timeout
 
-  res.json(results);
+        const response = await fetch(feed.url, {
+          signal: controller.signal,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PersonalizedNewsDigest/1.0",
+            Accept: "application/rss+xml, application/rdf+xml, application/atom+xml, application/xml, text/xml",
+          },
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP error ${response.status}`);
+        }
+
+        const xmlText = await response.text();
+        const parsedItems = parseRSS(xmlText, feed.id, feed.name);
+        
+        // Limit to max 15 newest items per feed to avoid overwhelming the model or exceeding token limits
+        results.push(...parsedItems.slice(0, 15));
+      } catch (err: any) {
+        console.error(`Failed to fetch/parse feed ${feed?.name || "Unknown"} (${feed?.url || "No URL"}):`, err.message);
+        // We don't fail the whole request, just log and skip this feed or return a partial success
+      }
+    });
+
+    await Promise.all(fetchPromises);
+
+    // Sort results by date descending (approximate parsing)
+    results.sort((a, b) => {
+      const timeA = new Date(a.pubDate).getTime();
+      const timeB = new Date(b.pubDate).getTime();
+      if (isNaN(timeA) || isNaN(timeB)) return 0;
+      return timeB - timeA;
+    });
+
+    res.json(results);
+  } catch (err: any) {
+    console.error("Internal server error in /api/fetch-rss:", err);
+    res.status(500).json({ error: "Internal server error: " + err.message });
+  }
 });
 
 // 3. POST /api/generate-digest - Uses Gemini to filter, match, and compile articles into a themed daily digest
@@ -360,18 +370,24 @@ Analyze these articles, filter out any duplicates or highly low-quality entries,
 
 // Configure Vite middleware and static routes
 async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+  if (!process.env.VERCEL) {
+    if (process.env.NODE_ENV !== "production") {
+      try {
+        const vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: "spa",
+        });
+        app.use(vite.middlewares);
+      } catch (err) {
+        console.error("Failed to start Vite dev server:", err);
+      }
+    } else {
+      const distPath = path.join(process.cwd(), "dist");
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
   }
 
   // Only listen to the port when we are not running as a Vercel serverless function
