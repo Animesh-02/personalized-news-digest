@@ -3,73 +3,8 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
-import https from "https";
-import http from "http";
-import { URL } from "url";
 
 dotenv.config();
-
-// Helper to fetch any URL using standard Node.js networking, handling redirects and timeouts robustly
-function fetchUrl(urlStr: string, options: { timeout?: number; headers?: Record<string, string>; depth?: number } = {}): Promise<string> {
-  const depth = options.depth || 0;
-  if (depth > 5) {
-    return Promise.reject(new Error("Too many redirects"));
-  }
-  return new Promise((resolve, reject) => {
-    try {
-      const parsedUrl = new URL(urlStr);
-      const protocol = parsedUrl.protocol === "https:" ? https : http;
-      
-      const req = protocol.get(
-        urlStr,
-        {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PersonalizedNewsDigest/1.0",
-            Accept: "application/rss+xml, application/rdf+xml, application/atom+xml, application/xml, text/xml",
-            ...(options.headers || {}),
-          },
-          timeout: options.timeout || 8000,
-        },
-        (res) => {
-          // Handle redirects (301, 302, 303, 307, 308)
-          if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            let nextUrl = res.headers.location;
-            if (!nextUrl.startsWith("http://") && !nextUrl.startsWith("https://")) {
-              nextUrl = new URL(nextUrl, urlStr).toString();
-            }
-            fetchUrl(nextUrl, { ...options, depth: depth + 1 }).then(resolve).catch(reject);
-            return;
-          }
-
-          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-            reject(new Error(`HTTP error ${res.statusCode}`));
-            return;
-          }
-
-          const chunks: Buffer[] = [];
-          res.on("data", (chunk) => {
-            chunks.push(chunk);
-          });
-          res.on("end", () => {
-            const buffer = Buffer.concat(chunks);
-            resolve(buffer.toString("utf8"));
-          });
-        }
-      );
-
-      req.on("error", (err) => {
-        reject(err);
-      });
-
-      req.on("timeout", () => {
-        req.destroy();
-        reject(new Error("Request timeout"));
-      });
-    } catch (err) {
-      reject(err);
-    }
-  });
-}
 
 // Initialize Gemini SDK with custom user agent as requested in guidelines
 const apiKey = process.env.GEMINI_API_KEY;
@@ -265,7 +200,24 @@ app.post("/api/fetch-rss", async (req, res) => {
           return;
         }
 
-        const xmlText = await fetchUrl(feed.url, { timeout: 8000 });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        const response = await fetch(feed.url, {
+          signal: controller.signal,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PersonalizedNewsDigest/1.0",
+            Accept: "application/rss+xml, application/rdf+xml, application/atom+xml, application/xml, text/xml",
+          },
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP status ${response.status}`);
+        }
+
+        const xmlText = await response.text();
         const parsedItems = parseRSS(xmlText, feed.id, feed.name);
         
         // Limit to max 15 newest items per feed to avoid overwhelming the model or exceeding token limits
@@ -418,32 +370,27 @@ Analyze these articles, filter out any duplicates or highly low-quality entries,
 
 // Configure Vite middleware and static routes
 async function startServer() {
-  if (!process.env.VERCEL) {
-    if (process.env.NODE_ENV !== "production") {
-      try {
-        const vite = await createViteServer({
-          server: { middlewareMode: true },
-          appType: "spa",
-        });
-        app.use(vite.middlewares);
-      } catch (err) {
-        console.error("Failed to start Vite dev server:", err);
-      }
-    } else {
-      const distPath = path.join(process.cwd(), "dist");
-      app.use(express.static(distPath));
-      app.get("*", (req, res) => {
-        res.sendFile(path.join(distPath, "index.html"));
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
       });
+      app.use(vite.middlewares);
+    } catch (err) {
+      console.error("Failed to start Vite dev server:", err);
     }
-  }
-
-  // Only listen to the port when we are not running as a Vercel serverless function
-  if (!process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 }
 
 startServer();
