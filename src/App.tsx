@@ -16,7 +16,7 @@ import {
   CheckCircle,
   HelpCircle
 } from "lucide-react";
-import { FeedSource, FeedItem, DailyDigest } from "./types";
+import { FeedSource, FeedItem, DailyDigest, DEFAULT_FEEDS } from "./types";
 import InterestConfig from "./components/InterestConfig";
 import FeedConfig from "./components/FeedConfig";
 import DigestViewer from "./components/DigestViewer";
@@ -80,7 +80,35 @@ export default function App() {
     return saved ? JSON.parse(saved) : ["Artificial Intelligence", "Space Exploration", "Macroeconomics"];
   });
 
-  const [feeds, setFeeds] = useState<FeedSource[]>([]);
+  const [feeds, setFeeds] = useState<FeedSource[]>(() => {
+    const savedFeeds = localStorage.getItem("news-digest-feeds");
+    if (savedFeeds) {
+      try {
+        let parsed: FeedSource[] = JSON.parse(savedFeeds);
+        let migrated = false;
+        const mapped = parsed.map((f) => {
+          if (
+            f.id === "nyt-tech" &&
+            (f.url === "https://rss.nytimes.com/services/xml/rss/technology.xml" ||
+             f.url === "https://rss.nytimes.com/services/xml/rss/nyt/technology.xml")
+          ) {
+            migrated = true;
+            return { ...f, url: "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml" };
+          }
+          return f;
+        });
+        if (migrated) {
+          localStorage.setItem("news-digest-feeds", JSON.stringify(mapped));
+        }
+        return mapped;
+      } catch (e) {
+        console.error("Failed to parse feeds from localStorage:", e);
+      }
+    }
+    // Fallback to default feeds if none are saved or parsing failed
+    localStorage.setItem("news-digest-feeds", JSON.stringify(DEFAULT_FEEDS));
+    return DEFAULT_FEEDS;
+  });
 
   const [digests, setDigests] = useState<DailyDigest[]>(() => {
     const saved = localStorage.getItem("news-digest-archives");
@@ -125,64 +153,16 @@ export default function App() {
     }
   }, [currentDigest]);
 
-  // Load Feeds from localstorage or fetch default feeds from server
-  useEffect(() => {
-    const initFeeds = async () => {
-      const savedFeeds = localStorage.getItem("news-digest-feeds");
-      if (savedFeeds) {
-        let parsed: FeedSource[] = JSON.parse(savedFeeds);
-        let migrated = false;
-        parsed = parsed.map((f) => {
-          if (
-            f.id === "nyt-tech" &&
-            (f.url === "https://rss.nytimes.com/services/xml/rss/technology.xml" ||
-             f.url === "https://rss.nytimes.com/services/xml/rss/nyt/technology.xml")
-          ) {
-            migrated = true;
-            return { ...f, url: "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml" };
-          }
-          return f;
-        });
-        setFeeds(parsed);
-        if (migrated) {
-          localStorage.setItem("news-digest-feeds", JSON.stringify(parsed));
-        }
-      } else {
-        try {
-          const response = await fetch("/api/default-feeds");
-          if (response.ok) {
-            const defaultFeeds = await response.json();
-            setFeeds(defaultFeeds);
-            localStorage.setItem("news-digest-feeds", JSON.stringify(defaultFeeds));
-          }
-        } catch (err) {
-          console.error("Failed to load default feeds:", err);
-        }
-      }
-    };
-    initFeeds();
-  }, []);
-
   // Sync custom feeds to local storage
   const handleFeedsChange = (updatedFeeds: FeedSource[]) => {
     setFeeds(updatedFeeds);
     localStorage.setItem("news-digest-feeds", JSON.stringify(updatedFeeds));
   };
 
-  // Reset all feeds to defaults
-  const handleResetFeeds = async () => {
-    try {
-      const response = await fetch("/api/default-feeds");
-      if (response.ok) {
-        const defaultFeeds = await response.json();
-        setFeeds(defaultFeeds);
-        localStorage.setItem("news-digest-feeds", JSON.stringify(defaultFeeds));
-        alert("Feed sources reset to official defaults!");
-      }
-    } catch (err) {
-      console.error("Failed to reset feeds:", err);
-      alert("Failed to reset feeds to defaults.");
-    }
+  // Reset all feeds to defaults instantly on the client-side
+  const handleResetFeeds = () => {
+    setFeeds(DEFAULT_FEEDS);
+    localStorage.setItem("news-digest-feeds", JSON.stringify(DEFAULT_FEEDS));
   };
 
   // --- 4. Scraping & Parsing Handler ---

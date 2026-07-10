@@ -16,6 +16,15 @@ export default function FeedConfig({ feeds, onChange, onResetDefaults }: FeedCon
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [validationSuccess, setValidationSuccess] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+
+  const handleResetClick = () => {
+    if (onResetDefaults) {
+      onResetDefaults();
+      setResetSuccess(true);
+      setTimeout(() => setResetSuccess(false), 3000);
+    }
+  };
 
   const handleToggleFeed = (id: string) => {
     onChange(
@@ -102,14 +111,21 @@ export default function FeedConfig({ feeds, onChange, onResetDefaults }: FeedCon
             Active Feed Sources ({feeds.filter(f => f.isEnabled).length} active)
           </label>
           {onResetDefaults && (
-            <button
-              type="button"
-              onClick={onResetDefaults}
-              className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Reset to Defaults
-            </button>
+            <div className="flex items-center gap-2">
+              {resetSuccess && (
+                <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1 animate-pulse">
+                  <Check className="w-3 h-3" /> Defaults Restored!
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={handleResetClick}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Reset to Defaults
+              </button>
+            </div>
           )}
         </div>
         

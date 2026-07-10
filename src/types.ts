@@ -49,3 +49,54 @@ export interface UserProfile {
   interests: string[];
   feeds: FeedSource[];
 }
+
+export const DEFAULT_FEEDS: FeedSource[] = [
+  {
+    id: "techcrunch",
+    name: "TechCrunch",
+    url: "https://techcrunch.com/feed/",
+    category: "Technology",
+    isDefault: true,
+    isEnabled: true,
+  },
+  {
+    id: "nasa",
+    name: "NASA Breaking News",
+    url: "https://www.nasa.gov/news-release/feed/",
+    category: "Science",
+    isDefault: true,
+    isEnabled: true,
+  },
+  {
+    id: "bbc-world",
+    name: "BBC News - World",
+    url: "https://feeds.bbci.co.uk/news/world/rss.xml",
+    category: "World News",
+    isDefault: true,
+    isEnabled: true,
+  },
+  {
+    id: "nyt-tech",
+    name: "New York Times - Technology",
+    url: "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml",
+    category: "Technology",
+    isDefault: true,
+    isEnabled: true,
+  },
+  {
+    id: "sciencedaily",
+    name: "Science Daily",
+    url: "https://www.sciencedaily.com/rss/all.xml",
+    category: "Science",
+    isDefault: true,
+    isEnabled: true,
+  },
+  {
+    id: "nature",
+    name: "Nature Journal News",
+    url: "https://www.nature.com/nature.rss",
+    category: "Science",
+    isDefault: true,
+    isEnabled: true,
+  }
+];
