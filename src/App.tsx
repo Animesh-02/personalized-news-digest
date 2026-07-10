@@ -184,7 +184,14 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error(`Server returned error code ${response.status}`);
+        let errMsg = `Server returned error code ${response.status}`;
+        try {
+          const errData = await response.json();
+          if (errData && errData.error) {
+            errMsg += `: ${errData.error}`;
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
       }
 
       const articles = await response.json();
@@ -225,7 +232,14 @@ export default function App() {
         });
 
         if (!scrapeResponse.ok) {
-          throw new Error("Failed to automatically refresh news feeds.");
+          let errMsg = "Failed to automatically refresh news feeds.";
+          try {
+            const errData = await scrapeResponse.json();
+            if (errData && errData.error) {
+              errMsg += ` (${errData.error})`;
+            }
+          } catch (_) {}
+          throw new Error(errMsg);
         }
 
         articlesToUse = await scrapeResponse.json();
